@@ -64,7 +64,11 @@ public class MultiAhClient implements ClientModInitializer {
             dispatcher.register(ClientCommands.literal("autosell")
                 .executes(ctx -> setAutoSell(!Config.get().autoSellEnabled))
                 .then(ClientCommands.literal("on").executes(ctx -> setAutoSell(true)))
-                .then(ClientCommands.literal("off").executes(ctx -> setAutoSell(false))));
+                                .then(ClientCommands.literal("off").executes(ctx -> setAutoSell(false)))
+                .then(ClientCommands.literal("status").executes(ctx -> {
+                    AutoSell.status();
+                    return 1;
+                })));
         });
 
         ClientTickEvents.END_CLIENT_TICK.register(mc -> {
