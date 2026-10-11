@@ -1,0 +1,10 @@
+{
+  "schemaVersion": 1,
+  "id": "multiah",
+  "version": "${version}",
+  "name": "MultiAH",
+  "description": "Verkauft mit /ahmulti <betrag> alle Stacks des Items in deiner Hand zum gleichen Preis per /ah sell.",
+  "environment": "client",
+  "entrypoints": { "client": ["de.multiah.MultiAhClient"] },
+  "depends": { "fabricloader": "*", "fabric-api": "*", "minecraft": "~1.21" }
+}
