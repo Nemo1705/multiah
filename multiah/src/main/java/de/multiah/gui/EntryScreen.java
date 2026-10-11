@@ -19,12 +19,13 @@ public class EntryScreen extends Screen {
         this.e = e;
     }
 
-    private static long parseLong(String s) {
-        try {
-            return s.isEmpty() ? 0 : Long.parseLong(s);
-        } catch (NumberFormatException ex) {
-            return 0;
-        }
+       private static long parseLong(String s) {
+       try {
+           String digits = s.replaceAll("[^0-9]", "");
+           return digits.isEmpty() ? 0 : Long.parseLong(digits);
+       } catch (NumberFormatException ex) {
+           return 0;
+       }
     }
 
     @Override
@@ -47,7 +48,7 @@ public class EntryScreen extends Screen {
         // 2. Preis
         EditBox price = new EditBox(this.font, wx, y + step, ww, 20, Component.literal("Preis"));
         price.setMaxLength(12);
-        price.setFilter(s -> s.matches("\\d*"));
+        
         price.setValue(e.price > 0 ? String.valueOf(e.price) : "");
         price.setResponder(s -> e.price = parseLong(s));
         this.addRenderableWidget(price);
@@ -63,7 +64,7 @@ public class EntryScreen extends Screen {
         // 4. Mindestmenge
         EditBox amount = new EditBox(this.font, wx, y + step * 3, ww, 20, Component.literal("Menge"));
         amount.setMaxLength(6);
-        amount.setFilter(s -> s.matches("\\d*"));
+       
         amount.setValue(String.valueOf(e.minAmount));
         amount.setResponder(s -> e.minAmount = (int) Math.max(1, Math.min(999999, parseLong(s))));
         this.addRenderableWidget(amount);
