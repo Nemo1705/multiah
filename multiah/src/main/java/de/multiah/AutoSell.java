@@ -29,7 +29,7 @@ public final class AutoSell {
     public static boolean eligible(Config.Entry e, ItemStack s) {
         if (s.isEmpty() || !id(s).equals(e.id)) return false;
         // nur "normale" Items ohne Verzauberung/Name/Schaden
-        if (!ItemStack.isSameItemSameComponents(s, s.getItem().getDefaultInstance())) return false;
+           if (s.isEnchanted() || s.isDamaged()) return false;
         // bei Preis pro Stack nur volle Stacks
         return !e.perStack || s.getCount() == s.getMaxStackSize();
     }
