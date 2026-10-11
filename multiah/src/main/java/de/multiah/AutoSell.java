@@ -97,4 +97,28 @@ public final class AutoSell {
                 }
             });
     }
+        public static void status() {
+        Minecraft mc = Minecraft.getInstance();
+        LocalPlayer p = mc.player;
+        if (p == null) return;
+        Config cfg = Config.get();
+        Seller.msg(p, "Auto-Sell: " + (cfg.autoSellEnabled ? "AN" : "AUS")
+            + " | Fenster offen: " + Seller.guiOpen
+            + " | Verkauf läuft: " + Seller.running);
+        for (Config.Entry e : cfg.entries) {
+            int count = 0;
+            int maxStack = 64;
+            for (int i = 0; i < 36; i++) {
+                ItemStack s = p.getInventory().getItem(i);
+                if (eligible(e, s)) {
+                    count += s.getCount();
+                    maxStack = s.getMaxStackSize();
+                }
+            }
+            Seller.msg(p, e.name + ": " + (e.enabled ? "aktiv" : "AUS")
+                + ", Preis " + e.price
+                + ", gefunden " + count
+                + ", nötig " + e.thresholdItems(maxStack));
+        }
+    }
 }
