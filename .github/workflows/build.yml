@@ -13,7 +13,8 @@ jobs:
         with:
           gradle-version: 8.14
       - run: gradle build
+        working-directory: multiah
       - uses: actions/upload-artifact@v4
         with:
           name: multiah-mod
-          path: build/libs/*.jar
+          path: multiah/build/libs/*.jar
