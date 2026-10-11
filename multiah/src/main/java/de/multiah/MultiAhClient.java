@@ -65,7 +65,7 @@ public class MultiAhClient implements ClientModInitializer {
             return;
         }
         // Wenn ein Menü offen ist, nicht eingreifen
-        if (mc.screen != null) return;
+           if (p.containerMenu != p.inventoryMenu) return;
         if (cooldown-- > 0) return;
 
         int selected = p.getInventory().getSelectedSlot();
