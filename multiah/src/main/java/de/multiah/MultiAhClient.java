@@ -1,107 +1,88 @@
 package de.multiah;
 
+import com.mojang.blaze3d.platform.InputConstants;
 import com.mojang.brigadier.arguments.StringArgumentType;
+import de.multiah.gui.SellSettingsScreen;
 import net.fabricmc.api.ClientModInitializer;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommandRegistrationCallback;
 import net.fabricmc.fabric.api.client.command.v2.ClientCommands;
 import net.fabricmc.fabric.api.client.event.lifecycle.v1.ClientTickEvents;
+import net.fabricmc.fabric.api.client.keymapping.v1.KeyMappingHelper;
+import net.minecraft.client.KeyMapping;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.player.LocalPlayer;
-import net.minecraft.network.chat.Component;
-import net.minecraft.world.inventory.ContainerInput;
 import net.minecraft.world.item.ItemStack;
+import org.lwjgl.glfw.GLFW;
 
 /**
  * /ahmulti <betrag>  -> verkauft ALLE Stacks des Items in deiner Hand (/ah sell <betrag>)
  * /ahstop            -> bricht den laufenden Verkauf ab
+ * /sellsettings      -> öffnet die Auto-Sell-Einstellungen (oder Taste in den Steuerungs-Einstellungen)
+ * /autosell [on|off] -> Auto-Sell ein-/ausschalten
  */
 public class MultiAhClient implements ClientModInitializer {
-    private static final int DELAY_TICKS = 20; // Pause zwischen den Verkäufen (20 = 1 Sekunde)
-
-    private static boolean running = false;
-    private static String price;
-    private static ItemStack template;
-    private static int cooldown = 0;
-    private static int sold = 0;
+    private static KeyMapping openKey;
+    private static int openGuiTicks = -1;
 
     @Override
     public void onInitializeClient() {
+        Config.get();
+
+        openKey = KeyMappingHelper.registerKeyMapping(new KeyMapping(
+            "key.multiah.open", InputConstants.Type.KEYSYM, GLFW.GLFW_KEY_O, KeyMapping.Category.MISC));
+
         ClientCommandRegistrationCallback.EVENT.register((dispatcher, buildContext) -> {
             dispatcher.register(ClientCommands.literal("ahmulti")
                 .then(ClientCommands.argument("betrag", StringArgumentType.word())
                     .executes(ctx -> {
-                        Minecraft mc = Minecraft.getInstance();
-                        LocalPlayer p = mc.player;
+                        LocalPlayer p = Minecraft.getInstance().player;
                         if (p == null) return 0;
                         ItemStack hand = p.getMainHandItem();
                         if (hand.isEmpty()) {
-                            msg(p, "§cDu hast kein Item in der Hand.");
+                            Seller.msg(p, "§cDu hast kein Item in der Hand.");
                             return 0;
                         }
-                        template = hand.copyWithCount(1);
-                        price = StringArgumentType.getString(ctx, "betrag");
-                        sold = 0;
-                        cooldown = 0;
-                        running = true;
-                        msg(p, "§aMultiverkauf gestartet. Abbrechen mit /ahstop");
+                        ItemStack template = hand.copyWithCount(1);
+                        String price = StringArgumentType.getString(ctx, "betrag");
+                        Seller.start(hand.getHoverName().getString(),
+                            s -> !s.isEmpty() && ItemStack.isSameItemSameComponents(s, template),
+                            s -> price, 0, null);
+                        Seller.msg(p, "§aMultiverkauf gestartet. Abbrechen mit /ahstop");
                         return 1;
                     })));
+
             dispatcher.register(ClientCommands.literal("ahstop").executes(ctx -> {
-                running = false;
-                LocalPlayer p = Minecraft.getInstance().player;
-                if (p != null) msg(p, "§eMultiverkauf abgebrochen (" + sold + " Stacks verkauft).");
+                Seller.stop();
                 return 1;
             }));
+
+            dispatcher.register(ClientCommands.literal("sellsettings").executes(ctx -> {
+                openGuiTicks = 3; // erst nach dem Schließen des Chats öffnen
+                return 1;
+            }));
+
+            dispatcher.register(ClientCommands.literal("autosell")
+                .executes(ctx -> setAutoSell(!Config.get().autoSellEnabled))
+                .then(ClientCommands.literal("on").executes(ctx -> setAutoSell(true)))
+                .then(ClientCommands.literal("off").executes(ctx -> setAutoSell(false))));
         });
 
-        ClientTickEvents.END_CLIENT_TICK.register(MultiAhClient::tick);
-    }
-
-    private static void tick(Minecraft mc) {
-        if (!running) return;
-        LocalPlayer p = mc.player;
-        if (p == null || mc.gameMode == null || mc.getConnection() == null) {
-            running = false;
-            return;
-        }
-        // Wenn ein Menü offen ist, nicht eingreifen
-           if (p.containerMenu != p.inventoryMenu) return;
-        if (cooldown-- > 0) return;
-
-        int selected = p.getInventory().getSelectedSlot();
-        ItemStack hand = p.getMainHandItem();
-
-        // Passt die Hand schon -> direkt verkaufen
-        if (!hand.isEmpty() && ItemStack.isSameItemSameComponents(hand, template)) {
-            sell(mc);
-            return;
-        }
-
-        // Sonst nächsten passenden Stack im Inventar (Slots 0-35) suchen und in die Hand tauschen
-        for (int i = 0; i < 36; i++) {
-            ItemStack s = p.getInventory().getItem(i);
-            if (i == selected || s.isEmpty()) continue;
-            if (ItemStack.isSameItemSameComponents(s, template)) {
-                int screenSlot = i < 9 ? 36 + i : i; // Hotbar liegt im Menü bei 36-44
-                mc.gameMode.handleContainerInput(
-                    p.inventoryMenu.containerId, screenSlot, selected, ContainerInput.SWAP, p);
-                sell(mc);
-                return;
+        ClientTickEvents.END_CLIENT_TICK.register(mc -> {
+            if (mc.player == null) return;
+            while (openKey.consumeClick()) openGuiTicks = 1;
+            if (openGuiTicks > 0 && --openGuiTicks == 0) {
+                mc.setScreenAndShow(new SellSettingsScreen(null));
             }
-        }
-
-        // Nichts mehr gefunden -> fertig
-        running = false;
-        msg(p, "§aFertig! " + sold + " Stacks verkauft.");
+            Seller.tick(mc);
+            AutoSell.tick(mc);
+        });
     }
 
-    private static void sell(Minecraft mc) {
-        mc.getConnection().sendCommand("ah sell " + price);
-        sold++;
-        cooldown = DELAY_TICKS;
-    }
-
-    private static void msg(LocalPlayer p, String text) {
-        p.sendSystemMessage(Component.literal("[MultiAH] " + text));
+    private static int setAutoSell(boolean on) {
+        Config.get().autoSellEnabled = on;
+        Config.save();
+        LocalPlayer p = Minecraft.getInstance().player;
+        if (p != null) Seller.msg(p, on ? "§aAuto-Sell ist jetzt AN." : "§eAuto-Sell ist jetzt AUS.");
+        return 1;
     }
 }
