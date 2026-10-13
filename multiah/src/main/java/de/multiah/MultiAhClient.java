@@ -18,7 +18,7 @@ import org.lwjgl.glfw.GLFW;
  * /ahmulti <betrag>  -> verkauft ALLE Stacks des Items in deiner Hand (/ah sell <betrag>)
  * /ahmulti stop      -> stoppt sofort (auch /ahstop)
  * /sellsettings      -> öffnet die Einstellungen (oder Taste in den Steuerungs-Einstellungen)
- * /autosell [on|off|stop|status]
+ * /autosell [on|off|stop|status|reload]
  */
 public class MultiAhClient implements ClientModInitializer {
     private static KeyMapping openKey;
@@ -66,6 +66,12 @@ public class MultiAhClient implements ClientModInitializer {
                 .then(ClientCommands.literal("on").executes(ctx -> setAutoSell(true)))
                 .then(ClientCommands.literal("off").executes(ctx -> setAutoSell(false)))
                 .then(ClientCommands.literal("stop").executes(ctx -> setAutoSell(false)))
+                .then(ClientCommands.literal("reload").executes(ctx -> {
+                    Config.reload();
+                    LocalPlayer p = Minecraft.getInstance().player;
+                    if (p != null) Seller.msg(p, "§aEinstellungen neu geladen.");
+                    return 1;
+                }))
                 .then(ClientCommands.literal("status").executes(ctx -> {
                     AutoSell.status();
                     return 1;

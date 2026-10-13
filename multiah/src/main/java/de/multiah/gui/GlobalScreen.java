@@ -58,8 +58,12 @@ public class GlobalScreen extends BaseScreen {
         cmd.setResponder(s -> c.sellCommand = s.trim().replaceFirst("^/+", ""));
         this.addRenderableWidget(cmd);
 
+        this.addRenderableWidget(Button.builder(Component.literal("Neu laden"), b -> {
+            Config.reload();
+            this.rebuildWidgets();
+        }).bounds(cx - 150, y + 96, 145, 20).build());
         this.addRenderableWidget(Button.builder(Component.literal("Fertig"), b -> this.onClose())
-            .bounds(cx - 75, y + 96, 150, 20).build());
+            .bounds(cx + 5, y + 96, 145, 20).build());
     }
 
     @Override
@@ -71,7 +75,7 @@ public class GlobalScreen extends BaseScreen {
         g.text(this.font, Component.literal("Auto-Sell"), lx, y + 6, 0xFFFFFFFF);
         g.text(this.font, Component.literal("Pause pro Verkauf"), lx, y + 32, 0xFFFFFFFF);
         g.text(this.font, Component.literal("Befehl für /sell"), lx, y + 58, 0xFFFFFFFF);
-        centered(g, "§7Teste den /sell-Befehl vorher von Hand im Chat!", y + 80, 0xFFAAAAAA);
+        centered(g, "§7Befehl, der das /sell-Fenster öffnet (meist nur: sell)", y + 80, 0xFFAAAAAA);
         watermark(g);
     }
 }

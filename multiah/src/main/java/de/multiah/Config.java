@@ -13,7 +13,7 @@ import java.util.List;
 public class Config {
     public boolean autoSellEnabled = false; // Sicherheit: standardmäßig AUS
     public int delayTicks = 20;             // Pause zwischen zwei Verkäufen (20 = 1 Sekunde)
-    public String sellCommand = "sell hand"; // Befehl für die Methode /sell (ohne Schrägstrich)
+    public String sellCommand = "sell";      // Befehl, der das /sell-Fenster öffnet (ohne Schrägstrich)
     public List<Entry> entries = new ArrayList<>();
 
     public static class Entry {
@@ -65,7 +65,7 @@ public class Config {
         }
         if (instance == null) instance = new Config();
         if (instance.entries == null) instance.entries = new ArrayList<>();
-        if (instance.sellCommand == null) instance.sellCommand = "sell hand";
+        if (instance.sellCommand == null || instance.sellCommand.equals("sell hand")) instance.sellCommand = "sell";
         instance.delayTicks = Math.max(10, Math.min(200, instance.delayTicks));
     }
 
@@ -74,5 +74,13 @@ public class Config {
             Files.writeString(path(), GSON.toJson(get()));
         } catch (Exception ignored) {
         }
+        AutoSell.poke(); // Änderungen sofort anwenden: nächster Check ohne Wartezeit
+    }
+
+    /** Liest die Datei neu ein (z.B. nach manueller Änderung). */
+    public static void reload() {
+        instance = null;
+        load();
+        AutoSell.reset();
     }
 }

@@ -1,5 +1,6 @@
 package de.multiah.gui;
 
+import de.multiah.AutoSell;
 import de.multiah.Config;
 import de.multiah.Fmt;
 import de.multiah.Icons;
@@ -90,8 +91,14 @@ public class EntryScreen extends BaseScreen {
             this.rebuildWidgets();
         }).bounds(wx + ww - 30, y + step * 5, 30, 20).build());
 
-        // Löschen / Fertig
-        int by = y + step * 6 + 6;
+        // Jetzt verkaufen / Löschen / Fertig
+        int by = y + step * 6 + 4;
+        this.addRenderableWidget(Button.builder(
+            Component.literal("Jetzt " + Fmt.amount(e.minAmount, e.perStack) + " verkaufen"), b -> {
+                Config.save();
+                AutoSell.sellNow(e);
+                this.minecraft.setScreenAndShow(null);
+            }).bounds(cx - 150, by, 300, 20).build());
         this.addRenderableWidget(Button.builder(
             Component.literal(confirmDelete ? "§cWirklich löschen?" : "Löschen"), b -> {
                 if (!confirmDelete) {
@@ -102,9 +109,9 @@ public class EntryScreen extends BaseScreen {
                     Config.save();
                     this.minecraft.setScreenAndShow(parent);
                 }
-            }).bounds(cx - 150, by, 145, 20).build());
+            }).bounds(cx - 150, by + 24, 145, 20).build());
         this.addRenderableWidget(Button.builder(Component.literal("Fertig"), b -> this.onClose())
-            .bounds(cx + 5, by, 145, 20).build());
+            .bounds(cx + 5, by + 24, 145, 20).build());
     }
 
     @Override
@@ -126,7 +133,7 @@ public class EntryScreen extends BaseScreen {
 
         String info;
         if (e.isSell()) {
-            info = "§7Verkauft ab §f" + Fmt.amount(e.minAmount, e.perStack) + " §7per §a/sell §7(Preis bestimmt der Server)";
+            info = "§7Verkauft ab §f" + Fmt.amount(e.minAmount, e.perStack) + " §7per §a/sell §7(Preis bestimmt der Server, Fenster mit Knopf unten rechts)";
         } else if (e.price <= 0) {
             info = "§cKein Preis gesetzt - es wird nichts verkauft.";
         } else {
@@ -134,7 +141,7 @@ public class EntryScreen extends BaseScreen {
                 + Fmt.money(e.price) + (e.perStack ? " pro Stack" : " pro Item");
         }
         Component c = Component.literal(info);
-        g.text(this.font, c, cx - this.font.width(c) / 2, y + step * 6 + 34, 0xFFFFFFFF);
+        g.text(this.font, c, cx - this.font.width(c) / 2, y + step * 6 + 52, 0xFFFFFFFF);
     }
 
     private void label(GuiGraphicsExtractor g, String s, int x, int y) {

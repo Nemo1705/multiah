@@ -88,9 +88,14 @@ public class SellSettingsScreen extends BaseScreen {
                 if (!c.autoSellEnabled) Seller.stop();
                 Config.save();
                 this.rebuildWidgets();
-            }).bounds(left, row2, 140, 20).build());
+            }).bounds(left, row2, 98, 20).build());
+        this.addRenderableWidget(Button.builder(Component.literal("Neu laden"), b -> {
+            Config.reload();
+            status = "§aEinstellungen neu geladen.";
+            this.rebuildWidgets();
+        }).bounds(left + 101, row2, 98, 20).build());
         this.addRenderableWidget(Button.builder(Component.literal("Fertig"), b -> this.onClose())
-            .bounds(left + 144, row2, 156, 20).build());
+            .bounds(left + 202, row2, 98, 20).build());
     }
 
     private void addFromHand() {

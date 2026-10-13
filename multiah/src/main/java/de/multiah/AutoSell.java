@@ -24,6 +24,18 @@ public final class AutoSell {
 
     private AutoSell() {}
 
+    /** Nächster Check sofort (nach Einstellungs-Änderung). */
+    public static void poke() {
+        timer = 0;
+    }
+
+    /** Alles auf Anfang (nach "Neu laden"). */
+    public static void reset() {
+        timer = 0;
+        backoff = 0;
+        aborts = 0;
+    }
+
     public static String id(ItemStack s) {
         return BuiltInRegistries.ITEM.getKey(s.getItem()).toString();
     }
@@ -45,7 +57,6 @@ public final class AutoSell {
     }
 
     private static String command(Config.Entry e, ItemStack s) {
-        if (e.isSell()) return Config.get().sellCommand;
         return "ah sell " + salePrice(e, s);
     }
 
@@ -94,17 +105,35 @@ public final class AutoSell {
             long min = Math.max(1, e.minAmount);
             long av = available(e, p);
             if (av >= min) {
-                startSale(e, (av / min) * min); // nur ganze Vielfache der Mindestmenge
+                startSale(e, min, true); // genau die eingestellte Menge, nicht mehr
                 return;
             }
         }
     }
 
-    private static void startSale(Config.Entry e, long units) {
-        Config cfg = Config.get();
+    /** Verkauft sofort genau die eingestellte Menge (Knopf "Jetzt verkaufen"). */
+    public static void sellNow(Config.Entry e) {
+        LocalPlayer p = Minecraft.getInstance().player;
+        if (p == null) return;
+        if (!e.isSell() && e.price <= 0) {
+            Seller.msg(p, "§cKein Preis gesetzt.");
+            return;
+        }
+        long min = Math.max(1, e.minAmount);
+        long av = available(e, p);
+        if (av < min) {
+            Seller.msg(p, "§cZu wenig im Inventar: " + Fmt.amount(av, e.perStack)
+                + " vorhanden, eingestellt sind " + Fmt.amount(min, e.perStack) + ".");
+            return;
+        }
+        startSale(e, min, false);
+    }
+
+    private static void startSale(Config.Entry e, long units, boolean auto) {
         Seller.Job job = new Seller.Job(s -> command(e, s), s -> e.price > 0 ? salePrice(e, s) : -1L);
         String verb = e.isSell() ? "verkauft" : "zum Verkauf eingestellt";
-        Seller.Done done = result -> {
+        Seller.Done done = !auto ? null : result -> {
+            Config cfg = Config.get();
             if (result == Seller.Result.OK) {
                 aborts = 0;
                 return;
@@ -126,10 +155,14 @@ public final class AutoSell {
                 }
             }
         };
-        if (e.perStack) {
-            Seller.startWhole(e.name, s -> eligible(e, s), job, units, verb, e.isSell(), done);
+        if (e.isSell()) {
+            // /sell: Fenster öffnen, Items hineinlegen, Knopf unten rechts klicken
+            Seller.startGui(e.name, s -> eligible(e, s), s -> e.price > 0 ? salePrice(e, s) : -1L,
+                !e.perStack, units, verb, true, done);
+        } else if (e.perStack) {
+            Seller.startWhole(e.name, s -> eligible(e, s), job, units, verb, false, done);
         } else {
-            Seller.startItems(e.name, s -> eligible(e, s), job, units, verb, e.isSell(), done);
+            Seller.startItems(e.name, s -> eligible(e, s), job, units, verb, false, done);
         }
     }
 
