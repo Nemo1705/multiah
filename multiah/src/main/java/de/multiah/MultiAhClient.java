@@ -16,9 +16,9 @@ import org.lwjgl.glfw.GLFW;
 
 /**
  * /ahmulti <betrag>  -> verkauft ALLE Stacks des Items in deiner Hand (/ah sell <betrag>)
- * /ahstop            -> bricht den laufenden Verkauf ab
- * /sellsettings      -> öffnet die Auto-Sell-Einstellungen (oder Taste in den Steuerungs-Einstellungen)
- * /autosell [on|off] -> Auto-Sell ein-/ausschalten
+ * /ahmulti stop      -> stoppt sofort (auch /ahstop)
+ * /sellsettings      -> öffnet die Einstellungen (oder Taste in den Steuerungs-Einstellungen)
+ * /autosell [on|off|stop|status]
  */
 public class MultiAhClient implements ClientModInitializer {
     private static KeyMapping openKey;
@@ -33,6 +33,7 @@ public class MultiAhClient implements ClientModInitializer {
 
         ClientCommandRegistrationCallback.EVENT.register((dispatcher, buildContext) -> {
             dispatcher.register(ClientCommands.literal("ahmulti")
+                .then(ClientCommands.literal("stop").executes(ctx -> stopSelling()))
                 .then(ClientCommands.argument("betrag", StringArgumentType.word())
                     .executes(ctx -> {
                         LocalPlayer p = Minecraft.getInstance().player;
@@ -44,17 +45,16 @@ public class MultiAhClient implements ClientModInitializer {
                         }
                         ItemStack template = hand.copyWithCount(1);
                         String price = StringArgumentType.getString(ctx, "betrag");
-                        Seller.start(hand.getHoverName().getString(),
+                        long value = price.matches("\\d{1,15}") ? Long.parseLong(price) : -1L;
+                        Seller.startWhole(hand.getHoverName().getString(),
                             s -> !s.isEmpty() && ItemStack.isSameItemSameComponents(s, template),
-                            s -> price, 0, null);
-                        Seller.msg(p, "§aMultiverkauf gestartet. Abbrechen mit /ahstop");
+                            new Seller.Job(s -> "ah sell " + price, s -> value),
+                            Long.MAX_VALUE, "zum Verkauf eingestellt", false, null);
+                        Seller.msg(p, "§aMultiverkauf gestartet. Stoppen mit /ahmulti stop");
                         return 1;
                     })));
 
-            dispatcher.register(ClientCommands.literal("ahstop").executes(ctx -> {
-                Seller.stop();
-                return 1;
-            }));
+            dispatcher.register(ClientCommands.literal("ahstop").executes(ctx -> stopSelling()));
 
             dispatcher.register(ClientCommands.literal("sellsettings").executes(ctx -> {
                 openGuiTicks = 3; // erst nach dem Schließen des Chats öffnen
@@ -64,7 +64,8 @@ public class MultiAhClient implements ClientModInitializer {
             dispatcher.register(ClientCommands.literal("autosell")
                 .executes(ctx -> setAutoSell(!Config.get().autoSellEnabled))
                 .then(ClientCommands.literal("on").executes(ctx -> setAutoSell(true)))
-                                .then(ClientCommands.literal("off").executes(ctx -> setAutoSell(false)))
+                .then(ClientCommands.literal("off").executes(ctx -> setAutoSell(false)))
+                .then(ClientCommands.literal("stop").executes(ctx -> setAutoSell(false)))
                 .then(ClientCommands.literal("status").executes(ctx -> {
                     AutoSell.status();
                     return 1;
@@ -82,8 +83,23 @@ public class MultiAhClient implements ClientModInitializer {
         });
     }
 
+    private static int stopSelling() {
+        if (!Seller.stop()) {
+            LocalPlayer p = Minecraft.getInstance().player;
+            if (p != null) Seller.msg(p, "§7Es läuft gerade kein Verkauf.");
+        }
+        return 1;
+    }
+
+    /** Ausschalten stoppt zuerst einen laufenden Verkauf und schaltet dann Auto-Sell ab. */
     private static int setAutoSell(boolean on) {
-        Config.get().autoSellEnabled = on;
+        Config cfg = Config.get();
+        if (!on) {
+            cfg.autoSellEnabled = false; // zuerst aus, damit nichts neu startet
+            Seller.stop();
+        } else {
+            cfg.autoSellEnabled = true;
+        }
         Config.save();
         LocalPlayer p = Minecraft.getInstance().player;
         if (p != null) Seller.msg(p, on ? "§aAuto-Sell ist jetzt AN." : "§eAuto-Sell ist jetzt AUS.");

@@ -13,17 +13,17 @@ import java.util.List;
 public class Config {
     public boolean autoSellEnabled = false; // Sicherheit: standardmäßig AUS
     public int delayTicks = 20;             // Pause zwischen zwei Verkäufen (20 = 1 Sekunde)
-    public int maxSellsPerRound = 27;       // maximale Verkäufe pro Auto-Sell-Runde
+    public String sellCommand = "sell hand"; // Befehl für die Methode /sell (ohne Schrägstrich)
     public List<Entry> entries = new ArrayList<>();
 
     public static class Entry {
         public String id = "";          // z.B. minecraft:cobblestone
         public String name = "";        // Anzeigename
         public boolean enabled = false; // Auto-Sell für dieses Item an/aus
-        public long price = 0;          // Preis (0 = nicht gesetzt -> es wird nie verkauft)
-        public boolean perStack = true; // true = Preis pro Stack, false = Preis pro Item
-        public int minAmount = 1;       // Mindestmenge
-        public boolean minInStacks = true; // true = Mindestmenge in Stacks, false = in Items
+        public String method = "ah";    // "ah" oder "sell"
+        public long price = 0;          // Preis pro Einheit (0 = nicht gesetzt)
+        public boolean perStack = true; // Einheit: true = Stacks, false = Items (gilt für Preis UND Mindestmenge)
+        public int minAmount = 1;       // Mindestmenge in der gewählten Einheit
         public int priority = 0;        // höhere Zahl = wird zuerst verkauft
 
         public Entry() {}
@@ -33,8 +33,12 @@ public class Config {
             this.name = name;
         }
 
+        public boolean isSell() {
+            return "sell".equals(method);
+        }
+
         public int thresholdItems(int maxStack) {
-            long t = minInStacks ? (long) minAmount * maxStack : minAmount;
+            long t = perStack ? (long) minAmount * maxStack : minAmount;
             return (int) Math.min(Integer.MAX_VALUE, Math.max(1, t));
         }
     }
@@ -61,8 +65,8 @@ public class Config {
         }
         if (instance == null) instance = new Config();
         if (instance.entries == null) instance.entries = new ArrayList<>();
+        if (instance.sellCommand == null) instance.sellCommand = "sell hand";
         instance.delayTicks = Math.max(10, Math.min(200, instance.delayTicks));
-        instance.maxSellsPerRound = Math.max(1, Math.min(100, instance.maxSellsPerRound));
     }
 
     public static void save() {

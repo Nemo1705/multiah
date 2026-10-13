@@ -2,6 +2,8 @@ package de.multiah.gui;
 
 import de.multiah.AutoSell;
 import de.multiah.Config;
+import de.multiah.Fmt;
+import de.multiah.Icons;
 import de.multiah.Seller;
 import net.minecraft.client.gui.GuiGraphicsExtractor;
 import net.minecraft.client.gui.components.Button;
@@ -9,52 +11,51 @@ import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 import net.minecraft.world.item.ItemStack;
 
-import java.util.Locale;
+import java.util.ArrayList;
+import java.util.List;
 
-/** Hauptfenster: Übersicht aller Auto-Sell-Einträge. */
-public class SellSettingsScreen extends Screen {
-    private final Screen parent;
+/** Reiter "Farmen / Auto-Sell": Übersicht aller Einträge mit Item-Icons. */
+public class SellSettingsScreen extends BaseScreen {
     private int page = 0;
     private String status = "";
+    private final List<Config.Entry> shown = new ArrayList<>();
 
     public SellSettingsScreen(Screen parent) {
-        super(Component.literal("SellSettings"));
-        this.parent = parent;
+        super("SellSettings", parent);
     }
 
     private int perPage() {
-        return Math.max(2, Math.min(8, (this.height - 124) / 24));
-    }
-
-    static String money(long v) {
-        return String.format(Locale.GERMANY, "%,d", v);
+        return Math.max(2, Math.min(8, (this.height - 144) / 24));
     }
 
     private static String label(Config.Entry e) {
-        return (e.enabled ? "§a● " : "§c● ") + "§f" + e.name + " §7| §f" + money(e.price) + " $"
-            + (e.perStack ? "/Stack" : "/Item") + " §7| ab §f" + e.minAmount + (e.minInStacks ? " Stacks" : " Items");
+        return (e.enabled ? "§a● " : "§c● ") + "§f" + e.name + " §7· §f" + Fmt.money(e.price)
+            + (e.perStack ? "/Stack" : "/Item") + " §7· ab §f" + Fmt.amount(e.minAmount, e.perStack)
+            + " §7· " + (e.isSell() ? "§a/sell" : "§e/ah");
     }
 
     @Override
     protected void init() {
         Seller.guiOpen = true;
+        addTabs(0);
         Config c = Config.get();
-        int cx = this.width / 2;
-        int left = cx - 150;
+        int left = this.width / 2 - 150;
         int perPage = perPage();
         int pages = Math.max(1, (c.entries.size() + perPage - 1) / perPage);
         if (page >= pages) page = pages - 1;
         if (page < 0) page = 0;
         int start = page * perPage;
 
+        shown.clear();
         for (int i = 0; i < perPage; i++) {
             int idx = start + i;
             if (idx >= c.entries.size()) break;
             Config.Entry e = c.entries.get(idx);
-            int y = 44 + i * 24;
+            shown.add(e);
+            int y = 60 + i * 24;
             this.addRenderableWidget(Button.builder(Component.literal(label(e)),
                 b -> this.minecraft.setScreenAndShow(new EntryScreen(this, e)))
-                .bounds(left, y, 225, 20).build());
+                .bounds(left + 22, y, 203, 20).build());
             this.addRenderableWidget(Button.builder(Component.literal(e.enabled ? "§aAN" : "§cAUS"), b -> {
                 e.enabled = !e.enabled;
                 Config.save();
@@ -84,14 +85,12 @@ public class SellSettingsScreen extends Screen {
         this.addRenderableWidget(Button.builder(
             Component.literal("Auto-Sell: " + (c.autoSellEnabled ? "§aAN" : "§cAUS")), b -> {
                 c.autoSellEnabled = !c.autoSellEnabled;
+                if (!c.autoSellEnabled) Seller.stop();
                 Config.save();
                 this.rebuildWidgets();
             }).bounds(left, row2, 140, 20).build());
-        this.addRenderableWidget(Button.builder(Component.literal("Einstellungen"),
-            b -> this.minecraft.setScreenAndShow(new GlobalScreen(this)))
-            .bounds(left + 144, row2, 90, 20).build());
         this.addRenderableWidget(Button.builder(Component.literal("Fertig"), b -> this.onClose())
-            .bounds(left + 238, row2, 62, 20).build());
+            .bounds(left + 144, row2, 156, 20).build());
     }
 
     private void addFromHand() {
@@ -118,29 +117,16 @@ public class SellSettingsScreen extends Screen {
     @Override
     public void extractRenderState(GuiGraphicsExtractor g, int mouseX, int mouseY, float partialTick) {
         super.extractRenderState(g, mouseX, mouseY, partialTick);
-        centered(g, "§l§6AUTO-SELL", 14, 0xFFFFFFFF);
-        centered(g, "§7Farm-Items automatisch über das AH verkaufen", 26, 0xFFAAAAAA);
+        header(g);
+        int left = this.width / 2 - 150;
+        for (int i = 0; i < shown.size(); i++) {
+            g.item(Icons.of(shown.get(i).id), left + 2, 60 + i * 24 + 2);
+        }
         if (Config.get().entries.isEmpty()) {
-            centered(g, "Noch keine Items. Nimm ein Item in die Hand", 70, 0xFFFFFFFF);
-            centered(g, "und klicke auf \"+ Item aus Hand\".", 82, 0xFFFFFFFF);
+            centered(g, "Noch keine Items. Nimm ein Item in die Hand", 90, 0xFFFFFFFF);
+            centered(g, "und klicke auf \"+ Item aus Hand\".", 102, 0xFFFFFFFF);
         }
         if (!status.isEmpty()) centered(g, status, this.height - 78, 0xFFFFFFFF);
-        centered(g, "Made by Nemo1705 & HighestHunter", this.height - 12, 0xFF808080);
-    }
-
-    private void centered(GuiGraphicsExtractor g, String s, int y, int color) {
-        Component c = Component.literal(s);
-        g.text(this.font, c, this.width / 2 - this.font.width(c) / 2, y, color);
-    }
-
-    @Override
-    public void onClose() {
-        Config.save();
-        this.minecraft.setScreenAndShow(parent);
-    }
-
-    @Override
-    public void removed() {
-        Seller.guiOpen = false;
+        watermark(g);
     }
 }

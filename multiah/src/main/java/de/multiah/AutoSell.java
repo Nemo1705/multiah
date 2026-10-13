@@ -9,10 +9,13 @@ import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.List;
 
-/** Prüft regelmäßig das Inventar und startet bei erreichter Mindestmenge einen Verkauf. */
+/**
+ * Prüft alle 2 Sekunden das Inventar (kein Tick-für-Tick-Scan, keine Events)
+ * und startet bei erreichter Mindestmenge genau einen Verkaufsauftrag.
+ */
 public final class AutoSell {
     private static final int CHECK_INTERVAL = 40;   // alle 2 Sekunden prüfen
-    private static final int BACKOFF_TICKS = 1200;  // 1 Minute Pause nach Abbruch/Fehler
+    private static final int BACKOFF_TICKS = 1200;  // 1 Minute Pause nach einem Fehler
     private static final int MAX_ABORTS = 3;
 
     private static int timer = 0;
@@ -28,9 +31,9 @@ public final class AutoSell {
     /** Darf dieser Stack für den Eintrag automatisch verkauft werden? */
     public static boolean eligible(Config.Entry e, ItemStack s) {
         if (s.isEmpty() || !id(s).equals(e.id)) return false;
-        // nur "normale" Items ohne Verzauberung/Name/Schaden
-           if (s.isEnchanted() || s.isDamaged()) return false;
-        // bei Preis pro Stack nur volle Stacks
+        // keine verzauberten oder beschädigten Items
+        if (s.isEnchanted() || s.isDamaged()) return false;
+        // bei Einheit "Stacks" nur volle Stacks
         return !e.perStack || s.getCount() == s.getMaxStackSize();
     }
 
@@ -39,6 +42,31 @@ public final class AutoSell {
         int max = Math.max(1, s.getMaxStackSize());
         if (s.getCount() == max) return e.price;
         return Math.max(1L, Math.round((double) e.price * s.getCount() / max));
+    }
+
+    private static String command(Config.Entry e, ItemStack s) {
+        if (e.isSell()) return Config.get().sellCommand;
+        return "ah sell " + salePrice(e, s);
+    }
+
+    /** Verfügbare Menge in der Einheit des Eintrags (Stacks: volle Stacks, Items: alle Items). */
+    public static long available(Config.Entry e, LocalPlayer p) {
+        long items = 0;
+        long stacks = 0;
+        for (int i = 0; i < 36; i++) {
+            ItemStack s = p.getInventory().getItem(i);
+            if (eligible(e, s)) {
+                items += s.getCount();
+                stacks++;
+            }
+        }
+        return e.perStack ? stacks : items;
+    }
+
+    /** Aktueller Bestand im Inventar: {Menge in der Einheit des Eintrags, Wert in $}. */
+    public static long[] holding(Config.Entry e, LocalPlayer p) {
+        long amount = available(e, p);
+        return new long[] {amount, Math.max(0, amount * e.price)};
     }
 
     public static void tick(Minecraft mc) {
@@ -57,47 +85,55 @@ public final class AutoSell {
         List<Config.Entry> sorted = new ArrayList<>(cfg.entries);
         sorted.sort(Comparator.comparingInt((Config.Entry e) -> e.priority).reversed());
         for (Config.Entry e : sorted) {
-            if (!e.enabled || e.price <= 0) continue;
-            int count = 0;
-            int maxStack = 64;
-            for (int i = 0; i < 36; i++) {
-                ItemStack s = p.getInventory().getItem(i);
-                if (eligible(e, s)) {
-                    count += s.getCount();
-                    maxStack = s.getMaxStackSize();
-                }
+            if (!e.enabled) continue;
+            if (e.isSell()) {
+                if (cfg.sellCommand == null || cfg.sellCommand.isBlank()) continue;
+            } else if (e.price <= 0) {
+                continue; // AH braucht einen Preis
             }
-            if (count > 0 && count >= e.thresholdItems(maxStack)) {
-                startRound(e);
+            long min = Math.max(1, e.minAmount);
+            long av = available(e, p);
+            if (av >= min) {
+                startSale(e, (av / min) * min); // nur ganze Vielfache der Mindestmenge
                 return;
             }
         }
     }
 
-    private static void startRound(Config.Entry e) {
+    private static void startSale(Config.Entry e, long units) {
         Config cfg = Config.get();
-        Seller.start(e.name, s -> eligible(e, s), s -> String.valueOf(salePrice(e, s)),
-            cfg.maxSellsPerRound, result -> {
-                if (result == Seller.Result.OK) {
+        Seller.Job job = new Seller.Job(s -> command(e, s), s -> e.price > 0 ? salePrice(e, s) : -1L);
+        String verb = e.isSell() ? "verkauft" : "zum Verkauf eingestellt";
+        Seller.Done done = result -> {
+            if (result == Seller.Result.OK) {
+                aborts = 0;
+                return;
+            }
+            backoff = BACKOFF_TICKS;
+            LocalPlayer p = Minecraft.getInstance().player;
+            if (result == Seller.Result.CANCELLED) {
+                // Gestoppt = Auto-Sell wirklich aus, es startet nichts von selbst neu
+                cfg.autoSellEnabled = false;
+                Config.save();
+                if (p != null) Seller.msg(p, "§eAuto-Sell wurde gestoppt (AUS).");
+            } else {
+                aborts++;
+                if (aborts >= MAX_ABORTS) {
+                    cfg.autoSellEnabled = false;
+                    Config.save();
                     aborts = 0;
-                } else {
-                    backoff = BACKOFF_TICKS;
-                    if (result == Seller.Result.FAILED) {
-                        aborts++;
-                        if (aborts >= MAX_ABORTS) {
-                            cfg.autoSellEnabled = false;
-                            Config.save();
-                            aborts = 0;
-                            LocalPlayer p = Minecraft.getInstance().player;
-                            if (p != null) {
-                                Seller.msg(p, "§cAuto-Sell wurde nach mehreren Fehlern AUSGESCHALTET.");
-                            }
-                        }
-                    }
+                    if (p != null) Seller.msg(p, "§cAuto-Sell wurde nach mehreren Fehlern AUSGESCHALTET.");
                 }
-            });
+            }
+        };
+        if (e.perStack) {
+            Seller.startWhole(e.name, s -> eligible(e, s), job, units, verb, e.isSell(), done);
+        } else {
+            Seller.startItems(e.name, s -> eligible(e, s), job, units, verb, e.isSell(), done);
+        }
     }
-        public static void status() {
+
+    public static void status() {
         Minecraft mc = Minecraft.getInstance();
         LocalPlayer p = mc.player;
         if (p == null) return;
@@ -106,19 +142,11 @@ public final class AutoSell {
             + " | Fenster offen: " + Seller.guiOpen
             + " | Verkauf läuft: " + Seller.running);
         for (Config.Entry e : cfg.entries) {
-            int count = 0;
-            int maxStack = 64;
-            for (int i = 0; i < 36; i++) {
-                ItemStack s = p.getInventory().getItem(i);
-                if (eligible(e, s)) {
-                    count += s.getCount();
-                    maxStack = s.getMaxStackSize();
-                }
-            }
             Seller.msg(p, e.name + ": " + (e.enabled ? "aktiv" : "AUS")
+                + ", " + (e.isSell() ? "/sell" : "/ah")
                 + ", Preis " + e.price
-                + ", gefunden " + count
-                + ", nötig " + e.thresholdItems(maxStack));
+                + ", gefunden " + Fmt.amount(available(e, p), e.perStack)
+                + ", nötig " + Fmt.amount(e.minAmount, e.perStack));
         }
     }
 }
