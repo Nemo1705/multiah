@@ -94,7 +94,8 @@ public class EntryScreen extends BaseScreen {
         // Jetzt verkaufen / Löschen / Fertig
         int by = y + step * 6 + 4;
         this.addRenderableWidget(Button.builder(
-            Component.literal("Jetzt " + Fmt.amount(e.minAmount, e.perStack) + " verkaufen"), b -> {
+            Component.literal(e.isSell() ? "Jetzt alles verkaufen"
+                : "Jetzt " + Fmt.amount(e.minAmount, e.perStack) + " verkaufen"), b -> {
                 Config.save();
                 AutoSell.sellNow(e);
                 this.minecraft.setScreenAndShow(null);
@@ -133,12 +134,16 @@ public class EntryScreen extends BaseScreen {
 
         String info;
         if (e.isSell()) {
-            info = "§7Verkauft ab §f" + Fmt.amount(e.minAmount, e.perStack) + " §7per §a/sell §7(Preis bestimmt der Server, Fenster mit Knopf unten rechts)";
+            info = "§7Ab §f" + Fmt.amount(e.minAmount, e.perStack)
+                + " §7im Inventar kommt §fALLES §7davon ins §a/sell§7-Fenster";
         } else if (e.price <= 0) {
             info = "§cKein Preis gesetzt - es wird nichts verkauft.";
+        } else if (e.perStack) {
+            info = "§7Ab §f" + Fmt.amount(e.minAmount, true) + " §7werden §falle Stacks §7per §e/ah §7für §f"
+                + Fmt.money(e.price) + " §7pro Stack verkauft";
         } else {
-            info = "§7Verkauft ab §f" + Fmt.amount(e.minAmount, e.perStack) + " §7per §e/ah §7für §f"
-                + Fmt.money(e.price) + (e.perStack ? " pro Stack" : " pro Item");
+            info = "§7Ab §f" + Fmt.amount(e.minAmount, false) + " §7verkauft §e/ah §7Angebote à §f"
+                + Fmt.amount(e.minAmount, false) + " §7für §f" + Fmt.money(e.price) + " §7pro Item, bis nichts mehr da ist";
         }
         Component c = Component.literal(info);
         g.text(this.font, c, cx - this.font.width(c) / 2, y + step * 6 + 52, 0xFFFFFFFF);

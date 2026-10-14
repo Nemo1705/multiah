@@ -52,6 +52,8 @@ public final class Seller {
     private static boolean estimated = false;
     private static boolean itemsMode = false;
     private static boolean guiMode = false;
+    private static boolean showItems = false;   // Meldung in Items (true) oder Stacks (false)
+    private static int lotSize = Integer.MAX_VALUE; // Items pro Angebot (nur Items-Modus)
     private static long remaining = 0; // Stacks (whole) bzw. Items (items), die noch verkauft werden sollen
 
     private static int cooldown;
@@ -88,26 +90,31 @@ public final class Seller {
 
     private Seller() {}
 
-    /** Verkauft ganze Stacks per Befehl, höchstens maxStacks Stück. */
+    /** Verkauft ganze Stacks per Befehl, höchstens maxStacks Stück (Long.MAX_VALUE = alle, bis nichts mehr da ist). */
     public static void startWhole(String label, Predicate<ItemStack> matcher, Job job, long maxStacks,
                                   String verb, boolean estimated, Done done) {
-        init(label, matcher, job, false, false, maxStacks, verb, estimated, done);
+        init(label, matcher, job, false, false, maxStacks, Integer.MAX_VALUE, false, verb, estimated, done);
     }
 
-    /** Verkauft genau totalItems einzelne Items per Befehl (teilt Stacks bei Bedarf automatisch auf). */
+    /**
+     * Verkauft einzelne Items per Befehl in Angeboten zu je "lotSize" Items (Stacks werden automatisch
+     * aufgeteilt). totalItems = Gesamtmenge (Long.MAX_VALUE = alles, bis nichts mehr da ist).
+     */
     public static void startItems(String label, Predicate<ItemStack> matcher, Job job, long totalItems,
-                                  String verb, boolean estimated, Done done) {
-        init(label, matcher, job, true, false, totalItems, verb, estimated, done);
+                                  int lotSize, String verb, boolean estimated, Done done) {
+        init(label, matcher, job, true, false, totalItems, Math.max(1, lotSize), true, verb, estimated, done);
     }
 
-    /** Verkauft über das /sell-Fenster. units = Stacks (itemsMode=false) oder Items (itemsMode=true). */
+    /** Legt ALLES Passende ins /sell-Fenster, bestätigt und wiederholt das, bis nichts mehr da ist. */
     public static void startGui(String label, Predicate<ItemStack> matcher, ToLongFunction<ItemStack> value,
-                                boolean itemsMode, long units, String verb, boolean estimated, Done done) {
-        init(label, matcher, new Job(s -> "", value), itemsMode, true, units, verb, estimated, done);
+                                boolean showItems, String verb, boolean estimated, Done done) {
+        init(label, matcher, new Job(s -> "", value), false, true, Long.MAX_VALUE, Integer.MAX_VALUE,
+            showItems, verb, estimated, done);
     }
 
     private static void init(String label, Predicate<ItemStack> matcher, Job job, boolean itemsMode,
-                             boolean guiMode, long remaining, String verb, boolean estimated, Done done) {
+                             boolean guiMode, long remaining, int lotSize, boolean showItems,
+                             String verb, boolean estimated, Done done) {
         if (running) finish(Result.CANCELLED, null);
         Seller.label = label;
         Seller.matcher = matcher;
@@ -115,6 +122,8 @@ public final class Seller {
         Seller.itemsMode = itemsMode;
         Seller.guiMode = guiMode;
         Seller.remaining = remaining;
+        Seller.lotSize = lotSize;
+        Seller.showItems = showItems;
         Seller.verb = verb;
         Seller.estimated = estimated;
         Seller.done = done;
@@ -279,7 +288,7 @@ public final class Seller {
             finish(Result.OK, null); // nichts Passendes mehr
             return;
         }
-        int lot = (int) Math.min(remaining, cap);
+        int lot = (int) Math.min(Math.min(remaining, cap), lotSize);
 
         // Kleinster Stack, der mindestens "lot" Items hat (bevorzugt exakt passend)
         int src = -1;
@@ -649,8 +658,8 @@ public final class Seller {
 
     private static String summary() {
         if (soldStacks == 0) return null;
-        long n = itemsMode ? soldItems : soldStacks;
-        String m = "§a" + Fmt.amount(n, !itemsMode) + " " + label + (n == 1 ? " wurde " : " wurden ") + verb + ".";
+        long n = showItems ? soldItems : soldStacks;
+        String m = "§a" + Fmt.amount(n, !showItems) + " " + label + (n == 1 ? " wurde " : " wurden ") + verb + ".";
         if (valueKnown) {
             m += " Gesamtwert: " + Fmt.money(totalValue) + (estimated ? " (geschätzt)" : "");
         }

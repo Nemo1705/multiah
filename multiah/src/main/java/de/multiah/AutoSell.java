@@ -11,7 +11,11 @@ import java.util.List;
 
 /**
  * Prüft alle 2 Sekunden das Inventar (kein Tick-für-Tick-Scan, keine Events)
- * und startet bei erreichter Mindestmenge genau einen Verkaufsauftrag.
+ * und startet bei erreichter Mindestmenge einen Verkaufsauftrag.
+ *
+ *  - /sell:  ALLES von diesem Item kommt ins /sell-Fenster (egal wie viele Stacks oder Items)
+ *  - /ah:    verkauft, bis nichts mehr davon im Inventar ist; die Meldung mit dem Gesamtwert
+ *            kommt erst am Ende (oder wenn du stoppst)
  */
 public final class AutoSell {
     private static final int CHECK_INTERVAL = 40;   // alle 2 Sekunden prüfen
@@ -45,8 +49,8 @@ public final class AutoSell {
         if (s.isEmpty() || !id(s).equals(e.id)) return false;
         // keine verzauberten oder beschädigten Items
         if (s.isEnchanted() || s.isDamaged()) return false;
-        // bei Einheit "Stacks" nur volle Stacks
-        return !e.perStack || s.getCount() == s.getMaxStackSize();
+        // /sell nimmt alles; /ah mit Einheit "Stacks" nur volle Stacks
+        return e.isSell() || !e.perStack || s.getCount() == s.getMaxStackSize();
     }
 
     public static long salePrice(Config.Entry e, ItemStack s) {
@@ -60,18 +64,31 @@ public final class AutoSell {
         return "ah sell " + salePrice(e, s);
     }
 
-    /** Verfügbare Menge in der Einheit des Eintrags (Stacks: volle Stacks, Items: alle Items). */
+    /** Alle passenden Items im Inventar (einzelne Items gezählt). */
+    public static long totalItems(Config.Entry e, LocalPlayer p) {
+        long items = 0;
+        for (int i = 0; i < 36; i++) {
+            ItemStack s = p.getInventory().getItem(i);
+            if (eligible(e, s)) items += s.getCount();
+        }
+        return items;
+    }
+
+    /** Verfügbare Menge in der Einheit des Eintrags (Stacks oder Items). */
     public static long available(Config.Entry e, LocalPlayer p) {
         long items = 0;
         long stacks = 0;
+        int max = 64;
         for (int i = 0; i < 36; i++) {
             ItemStack s = p.getInventory().getItem(i);
             if (eligible(e, s)) {
                 items += s.getCount();
                 stacks++;
+                max = Math.max(1, s.getMaxStackSize());
             }
         }
-        return e.perStack ? stacks : items;
+        if (!e.perStack) return items;
+        return e.isSell() ? items / max : stacks;
     }
 
     /** Aktueller Bestand im Inventar: {Menge in der Einheit des Eintrags, Wert in $}. */
@@ -103,19 +120,26 @@ public final class AutoSell {
                 continue; // AH braucht einen Preis
             }
             long min = Math.max(1, e.minAmount);
-            long av = available(e, p);
-            if (av >= min) {
-                startSale(e, min, true); // genau die eingestellte Menge, nicht mehr
+            if (available(e, p) >= min) {
+                startSale(e, true, false);
                 return;
             }
         }
     }
 
-    /** Verkauft sofort genau die eingestellte Menge (Knopf "Jetzt verkaufen"). */
+    /** Knopf "Jetzt verkaufen": /sell = alles; /ah = genau die eingestellte Menge, einmalig. */
     public static void sellNow(Config.Entry e) {
         LocalPlayer p = Minecraft.getInstance().player;
         if (p == null) return;
-        if (!e.isSell() && e.price <= 0) {
+        if (e.isSell()) {
+            if (totalItems(e, p) == 0) {
+                Seller.msg(p, "§cDu hast nichts davon im Inventar.");
+                return;
+            }
+            startSale(e, false, true);
+            return;
+        }
+        if (e.price <= 0) {
             Seller.msg(p, "§cKein Preis gesetzt.");
             return;
         }
@@ -126,10 +150,15 @@ public final class AutoSell {
                 + " vorhanden, eingestellt sind " + Fmt.amount(min, e.perStack) + ".");
             return;
         }
-        startSale(e, min, false);
+        startSale(e, false, true);
     }
 
-    private static void startSale(Config.Entry e, long units, boolean auto) {
+    /**
+     * auto: von Auto-Sell gestartet (bei Stopp/Fehler wird Auto-Sell ausgeschaltet).
+     * exact: nur die eingestellte Menge einmalig (nur /ah) statt alles bis nichts mehr da ist.
+     */
+    private static void startSale(Config.Entry e, boolean auto, boolean exact) {
+        long min = Math.max(1, e.minAmount);
         Seller.Job job = new Seller.Job(s -> command(e, s), s -> e.price > 0 ? salePrice(e, s) : -1L);
         String verb = e.isSell() ? "verkauft" : "zum Verkauf eingestellt";
         Seller.Done done = !auto ? null : result -> {
@@ -156,13 +185,14 @@ public final class AutoSell {
             }
         };
         if (e.isSell()) {
-            // /sell: Fenster öffnen, Items hineinlegen, Knopf unten rechts klicken
+            // /sell: Fenster öffnen, ALLES hineinlegen, Knopf unten rechts klicken
             Seller.startGui(e.name, s -> eligible(e, s), s -> e.price > 0 ? salePrice(e, s) : -1L,
-                !e.perStack, units, verb, true, done);
+                !e.perStack, verb, true, done);
         } else if (e.perStack) {
-            Seller.startWhole(e.name, s -> eligible(e, s), job, units, verb, false, done);
+            Seller.startWhole(e.name, s -> eligible(e, s), job, exact ? min : Long.MAX_VALUE, verb, false, done);
         } else {
-            Seller.startItems(e.name, s -> eligible(e, s), job, units, verb, false, done);
+            Seller.startItems(e.name, s -> eligible(e, s), job, exact ? min : Long.MAX_VALUE,
+                (int) Math.min(min, Integer.MAX_VALUE), verb, false, done);
         }
     }
 
