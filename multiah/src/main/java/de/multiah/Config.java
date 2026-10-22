@@ -16,6 +16,7 @@ public class Config {
     public String sellCommand = "sell";      // Befehl, der das /sell-Fenster öffnet (ohne Schrägstrich)
     public List<Entry> entries = new ArrayList<>();
     public Durability durability = new Durability();
+    public PlayerLogSettings playerLog = new PlayerLogSettings();
 
     public static class Entry {
         public String id = "";          // z.B. minecraft:cobblestone
@@ -58,6 +59,15 @@ public class Config {
         public int reservePoints = 2;      // Sicherheitsreserve (Punkte)
     }
 
+    /** Einstellungen des Player-Logs (TPA-Anfragen). */
+    public static class PlayerLogSettings {
+        public boolean enabled = true;   // TPA-Anfragen automatisch erkennen
+        public boolean notify = true;    // kurze Meldung über der Hotbar bei neuer Anfrage
+        public boolean persist = false;  // Log lokal in einer Datei speichern (sonst nur diese Sitzung)
+        public boolean debug = false;    // zeigt Chat-Zeilen mit "tp"/"teleport" an, um das Format zu finden
+        public List<String> customPatterns = new ArrayList<>(); // eigene Muster, Gruppe 1 = Spielername
+    }
+
     private static final Gson GSON = new GsonBuilder().setPrettyPrinting().create();
     private static Config instance;
 
@@ -81,6 +91,8 @@ public class Config {
         if (instance == null) instance = new Config();
         if (instance.entries == null) instance.entries = new ArrayList<>();
         if (instance.sellCommand == null || instance.sellCommand.equals("sell hand")) instance.sellCommand = "sell";
+        if (instance.playerLog == null) instance.playerLog = new PlayerLogSettings();
+        if (instance.playerLog.customPatterns == null) instance.playerLog.customPatterns = new ArrayList<>();
         if (instance.durability == null) instance.durability = new Durability();
         instance.durability.warnPercent = Math.max(1, Math.min(100, instance.durability.warnPercent));
         instance.durability.minPoints = Math.max(0, instance.durability.minPoints);
